@@ -15,6 +15,8 @@
 # include <stdlib.h>
 # include <float.h>
 # include <math.h>
+# include <errno.h>
+# include <fcntl.h>
 
 typedef struct s_env {
 

@@ -106,9 +106,28 @@ void create_socket(t_env *env) {
     env->host_src = "0.0.0.0"; // us
     env->host_dst = get_ip_from_hostname(env->hostname);
 
+    ft_memset(&(env->hints), 0, sizeof(env->hints));
+    env->hints.ai_family = AF_INET;
+    env->hints.ai_socktype = SOCK_RAW;
+    env->hints.ai_protocol = IPPROTO_ICMP;
+
+    if (getaddrinfo(env->host_dst, NULL, &(env->hints), &(env->res)) < 0) {
+        error_exit("get_addr_info: unknown host");
+    }
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0) {
         error_exit("socket failed");
+    }
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1) {
+        error_exit("fcntl");
+    }
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        error_exit("fcntl");
+    }
+    int option_value = 1;
+    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &option_value, sizeof(option_value)) < 0) {
+        error_exit("setsockopt: error when setting up the socket's options");
     }
     env->socket_fd = sockfd;
 }
@@ -121,7 +140,7 @@ void init_env(t_env *env) {
 
     // bonuses default
     env->count = 0; // 0 for infinite
-    env->verbose = false;
+    env->verbose = false; // ne sert à rien ??
     env->numeric = false;
     env->unix_time = false;
     env->ttl = 64;
@@ -164,6 +183,18 @@ void print_host(t_env env) {
 void setup_send(t_env *env) {
     ft_memset(&(env->buffer), 0, sizeof(env->buffer));
 
+    env->ip->ip_v = 4;            // Set the IP version to IPv4
+    env->ip->ip_hl = 5;           // Set the header length to 20 bytes (5 words)
+    env->ip->ip_tos = 0;          // Type of Service (set to 0 for default)
+    env->ip->ip_len = htons(sizeof(env->buffer));
+    env->ip->ip_id = 0; // Unique identification (you can choose a suitable value)
+    env->ip->ip_off = 0;          // Fragment offset and flags (set to 0 for no fragmentation)
+    env->ip->ip_ttl = env->ttl;         // Time to Live (adjust as needed)
+    env->ip->ip_p = env->res->ai_protocol;  // Protocol (e.g., ICMP)
+    env->ip->ip_sum = 0;          // Set checksum to 0 for now (calculate it later)
+    inet_pton(env->res->ai_family, env->host_src, &(env->ip->ip_src.s_addr));
+    inet_pton(env->res->ai_family, env->host_dst, &(env->ip->ip_dst.s_addr));
+
     env->icmp->icmp_type = ICMP_ECHO;
     env->icmp->icmp_code = 0;
     env->icmp->icmp_id = env->pid;
@@ -186,35 +217,39 @@ void setup_receive(t_env *env) {
 	env->msg.msg_flags = 0;
 }
 
-void timer(int interval)
-{
-	struct timeval tv_current;
-	struct timeval tv_next;
-
-	if (gettimeofday(&tv_current, NULL) < 0)
-		error_exit("Error gettimeofday\n");
-	tv_next = tv_current;
-	tv_next.tv_sec += interval;
-	while (tv_current.tv_sec < tv_next.tv_sec ||
-			tv_current.tv_usec < tv_next.tv_usec)
-	{
-		if (gettimeofday(&tv_current, NULL) < 0)
-			error_exit("Error gettimeofday\n");
-	}
-}
-
-bool receive_packet(t_env *env) {
+void receive_packet(int seconds_to_wait, t_env *env) {
     setup_receive(env);
-    int nb_receive = recvmsg(env->socket_fd, &(env->msg), MSG_DONTWAIT);
-    if (env->icmp->icmp_hun.ih_idseq.icd_id == env->pid) {
-        env->packets_recv++;
-        // calculate stats
-        printf("got echo back: %lu bytes\n", nb_receive - sizeof(*(env->ip)));
-        timer(env->interval);
-        env->seq++;
-        return (false);
+    (void)seconds_to_wait;
+    // start time
+    while (1) {
+        char buffer[200];
+        ssize_t packet_size = recvfrom(env->socket_fd, buffer, sizeof(buffer), MSG_DONTWAIT, NULL, NULL);
+
+        if (packet_size < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            }
+            error_exit("recvfrom");
+        }
+
+        struct iphdr *ip_packet = (struct iphdr *) buffer;
+        struct icmp *icmp_packet = (struct icmp *) (buffer + (ip_packet->ihl * 4));
+
+        if (env->icmp->icmp_hun.ih_idseq.icd_id == env->pid) {
+            env->packets_recv++;
+            // calculate stats
+            if (icmp_packet->icmp_type == ICMP_TIME_EXCEEDED) {
+                printf("Time to live exceeded.\n");
+            } else {
+                printf("%ld bytes from %s: icmp_seq=%u ttl=%d\n",
+                    packet_size - sizeof(struct iphdr), inet_ntoa(*(struct in_addr *)&ip_packet->saddr),
+                    icmp_packet->icmp_seq, ip_packet->ttl);
+            }
+            env->seq++;
+        }
+        // check if ttl too small with -v option
+        // check if time exceeded
     }
-    return (true);
 }
 
 void ping_loop(t_env *env) {
@@ -231,10 +266,13 @@ void ping_loop(t_env *env) {
         if (sendto(env->socket_fd, env->buffer, sizeof(env->buffer), 0, env->res->ai_addr, env->res->ai_addrlen) < 0) {
             error_exit("sendto: could not send");
         }
+        // time print start
         env->packets_sent++;
-        while (receive_packet(env))
-            ;
+        receive_packet(env->interval, env);
+        // time print end aggregate
     }
+    // wait 10 seconds
+    receive_packet(env->timeout, env);
     return ;
 }
 
