@@ -9,15 +9,12 @@ void usage_error(void) {
 void help_and_exit(void) {
     printf("FT_PING: help:\nusage: ./ft_ping [-h, -i, -n -p, -W, -ttl] hostname\n");
     printf("\t-h\n\t\tprint this help\n\n");
-    printf("\t-i interval\n\t\tWait interval seconds between sending each packet. Real number allowed with dot as a decimal separator (regardless locale");
-    printf("setup). The default is to wait for one second between each packet normally, or not to wait in flood mode. Only super-user may");
-    printf("set interval to values less than 2 ms.\n");
-    printf("\t-n\n\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n");
-    printf("\t-p pattern\n\t\tYou may specify up to 16 “pad” bytes to fill out the packet you send. This is useful for diagnosing");
-    printf(" data-dependent problems in a network. For example, -p ff will cause the sent packet to be filled with all ones.\n\n");
-    printf("\t-W timeout\n\t\tTime to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise");
-    printf(" ping waits for two RTTs. Real number allowed with dot as a decimal separator (regardless locale setup). 0 means infinite timeout.\n\n");
+    printf("\t-c count\n\t\tStop after sending count ECHO_REQUEST packets. With deadline option, ping waits for count ECHO_REPLY packets, until the timeout expires.\n\n");
+    printf("\t-D\n\t\tPrint timestamp (unix time + microseconds as in gettimeofday) before each line.\n\n");
+    printf("\t-n\n\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n\n");
     printf("\t-t ttl\n\t\tping only. Set the IP Time to Live.\n");
+    printf("\t-w deadline\n\t\tSpecify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received. In this case ping does not stop after ");
+    printf("count packet are sent, it waits either for deadline expire. or until count probes are answered or for some error notification from network.\n\n");
     exit(0);
 }
 
@@ -118,14 +115,14 @@ void create_socket(t_env *env) {
 void init_env(t_env *env) {
     env->pid = getpid();
     env->seq = 0;
-    env->count = 0;
     env->interval = 1;
 
     // bonuses default
-    env->timeout = 0;
-    env->ttl = 64;
+    env->count = 0; // 0 for infinite
     env->numeric = false;
-    env->pattern = false;
+    env->unix_time = false;
+    env->ttl = 64;
+    env->deadline = 0; // 0 for infinite
 }
 
 void arg_handler(t_env *env, int ac, char **av) {
@@ -171,7 +168,6 @@ void setup_send(t_env *env) {
 
     env->icmp->icmp_cksum = 0;
     env->icmp->icmp_cksum = ft_checksum((unsigned short *) env->icmp, sizeof(env->icmp));
-
 }
 
 void setup_receive(t_env *env) {

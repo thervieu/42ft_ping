@@ -37,13 +37,13 @@ typedef struct s_env {
 
     // communication data
     unsigned int seq;
-    unsigned int count;
+    unsigned int interval;
 
-    unsigned int interval; // -i real number
+    unsigned int count; // -c count number of packets to send
     bool numeric; // just don't print the weird sub dns rebound. bonus -n
-    bool pattern; // if set sequence is a set number that doesn't increment. given as a 2 bytes hexa number "00" to "XX". bonus -p
-    unsigned int timeout; // 0 by default (infinite). bonus -W 
-    unsigned int ttl; // 64 by default,=. bonus -ttl
+    bool unix_time; // print unix time. bonus -D
+    unsigned int ttl; // 64 by default is it ??. bonus -ttl
+    unsigned int deadline; // bonus -w int deadline, seconds after which we quit the program
 
     // socket
     int socket_fd;
