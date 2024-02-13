@@ -143,6 +143,10 @@ short ft_checksum(unsigned short *data, int len) {
     return (short)~checksum;
 }
 
+void print_host(t_env env) {
+    printf("PING %s (%s) 56(84) bytes of data.\n", env.hostname, env.host_dst);
+}
+
 void flood_loop(t_env *env) {
     (void)env;
     return ;
@@ -169,6 +173,7 @@ int main(int ac, char **av) {
 
     env.ip = (struct ip *)env.buffer;
     env.icmp = (struct icmp *)(env.ip + 1);
+    print_host(env);
     if (env.flood) {
         flood_loop(&env);
     } else {
