@@ -117,6 +117,7 @@ void init_env(t_env *env) {
     env->pid = getpid();
     env->seq = 0;
     env->interval = 1;
+    env->timeout = 10;
 
     // bonuses default
     env->count = 0; // 0 for infinite

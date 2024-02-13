@@ -39,6 +39,7 @@ typedef struct s_env {
     unsigned int seq;
     unsigned int interval;
 
+    unsigned int timeout; // default 10s
     unsigned int count; // -c count number of packets to send
     bool verbose; // -v verbose to print errors in packets
     bool numeric; // just don't print the weird sub dns rebound. bonus -n
