@@ -29,12 +29,11 @@ typedef struct s_env {
     struct icmp *icmp;
     struct addrinfo hints;
     struct addrinfo *res;
-    char buffer[1000];
+    char buffer[200];
 
     struct iovec iov[1];
     struct msghdr msg;
-    char buffer_control[1000];
-    //  -f
+    char buffer_control[200];
 
     // communication data
     unsigned int seq;
