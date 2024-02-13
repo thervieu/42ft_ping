@@ -7,12 +7,13 @@ void usage_error(void) {
 }
 
 void help_and_exit(void) {
-    printf("FT_PING: help:\nusage: ./ft_ping [-h, -i, -n -p, -W, -ttl] hostname\n");
+    printf("FT_PING: help:\nusage: ./ft_ping [-h, -v, -c, -D -n, -t, -w] hostname\n");
     printf("\t-h\n\t\tprint this help\n\n");
+    printf("\t-v\n\t\tVerbose output. Do not suppress DUP replies when pinging multicast address.\n\n");
     printf("\t-c count\n\t\tStop after sending count ECHO_REQUEST packets. With deadline option, ping waits for count ECHO_REPLY packets, until the timeout expires.\n\n");
     printf("\t-D\n\t\tPrint timestamp (unix time + microseconds as in gettimeofday) before each line.\n\n");
     printf("\t-n\n\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n\n");
-    printf("\t-t ttl\n\t\tping only. Set the IP Time to Live.\n");
+    printf("\t-t ttl\n\t\tping only. Set the IP Time to Live.\n"); // print response ttl
     printf("\t-w deadline\n\t\tSpecify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received. In this case ping does not stop after ");
     printf("count packet are sent, it waits either for deadline expire. or until count probes are answered or for some error notification from network.\n\n");
     exit(0);
@@ -119,6 +120,7 @@ void init_env(t_env *env) {
 
     // bonuses default
     env->count = 0; // 0 for infinite
+    env->verbose = false;
     env->numeric = false;
     env->unix_time = false;
     env->ttl = 64;
