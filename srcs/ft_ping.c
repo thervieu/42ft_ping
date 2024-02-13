@@ -247,7 +247,6 @@ void receive_packet(int seconds_to_wait, t_env *env) {
             }
             env->seq++;
         }
-        // check if ttl too small with -v option
         // check if time exceeded
     }
 }
