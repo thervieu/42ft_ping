@@ -2,21 +2,22 @@
 
 void usage_error(void) {
     printf("usage: ./ft_ping [-h, -f, -n -p, -W, -ttl] hostname\n");
-    printf("\t\t./ft_ping -h to print the help\n");
+    printf("\t./ft_ping -h to print the help\n");
     exit(1);
 }
 
 void help_and_exit(void) {
-    printf("FT_PING: help:\nusage: ./ft_ping [-h, -f, -n -p, -W, -ttl] hostname\n");
-    printf("\t\t-h\n\t\t\tprint this help\n\n");
-    printf("\t\t-f\n\t\t\tFlood ping. For every ECHO_REQUEST sent a period “.” is printed, while for ");
-    printf("every ECHO_REPLY received a backspace is printed.\n\n");
-    printf("\t\t-n\n\t\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n");
-    printf("\t\t-p pattern\n\t\t\tYou may specify up to 16 “pad” bytes to fill out the packet you send. This is useful for diagnosing");
+    printf("FT_PING: help:\nusage: ./ft_ping [-h, -i, -n -p, -W, -ttl] hostname\n");
+    printf("\t-h\n\t\tprint this help\n\n");
+    printf("\t-i interval\n\t\tWait interval seconds between sending each packet. Real number allowed with dot as a decimal separator (regardless locale");
+    printf("setup). The default is to wait for one second between each packet normally, or not to wait in flood mode. Only super-user may");
+    printf("set interval to values less than 2 ms.\n");
+    printf("\t-n\n\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n");
+    printf("\t-p pattern\n\t\tYou may specify up to 16 “pad” bytes to fill out the packet you send. This is useful for diagnosing");
     printf(" data-dependent problems in a network. For example, -p ff will cause the sent packet to be filled with all ones.\n\n");
-    printf("\t\t-W timeout\n\t\t\tTime to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise");
+    printf("\t-W timeout\n\t\tTime to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise");
     printf(" ping waits for two RTTs. Real number allowed with dot as a decimal separator (regardless locale setup). 0 means infinite timeout.\n\n");
-    printf("\t\t-t ttl\n\t\t\tping only. Set the IP Time to Live.\n");
+    printf("\t-t ttl\n\t\tping only. Set the IP Time to Live.\n");
     exit(0);
 }
 
@@ -116,14 +117,13 @@ void create_socket(t_env *env) {
 
 void init_env(t_env *env) {
     env->pid = getpid();
-    env->sequence = 0;
+    env->seq = 0;
     env->count = 0;
     env->interval = 1;
 
     // bonuses default
     env->timeout = 0;
     env->ttl = 64;
-    env->flood = false;
     env->numeric = false;
     env->pattern = false;
 }
@@ -140,7 +140,6 @@ void arg_handler(t_env *env, int ac, char **av) {
     env->hostname = hostname;
     return ;
 }
-
 
 short ft_checksum(unsigned short *data, int len) {
     unsigned long checksum = 0;
@@ -162,22 +161,87 @@ void print_host(t_env env) {
     printf("PING %s (%s) 56(84) bytes of data.\n", env.hostname, env.host_dst);
 }
 
-void flood_loop(t_env *env) {
-    (void)env;
-    return ;
+void setup_send(t_env *env) {
+    ft_memset(&(env->buffer), 0, sizeof(env->buffer));
+
+    env->icmp->icmp_type = ICMP_ECHO;
+    env->icmp->icmp_code = 0;
+    env->icmp->icmp_id = env->pid;
+    env->icmp->icmp_seq = env->seq;
+
+    env->icmp->icmp_cksum = 0;
+    env->icmp->icmp_cksum = ft_checksum((unsigned short *) env->icmp, sizeof(env->icmp));
+
+}
+
+void setup_receive(t_env *env) {
+    ft_memset(&(env->buffer), 0, sizeof(env->buffer));
+	env->iov[0].iov_base = env->buffer;
+	env->iov[0].iov_len = sizeof(env->buffer);
+	env->msg.msg_name = env->res->ai_addr;
+	env->msg.msg_namelen = env->res->ai_addrlen;
+	env->msg.msg_iov = env->iov;
+	env->msg.msg_iovlen = 1;
+	env->msg.msg_control = &(env->buffer_control);
+	env->msg.msg_controllen = sizeof(env->buffer_control);
+	env->msg.msg_flags = 0;
+}
+
+void timer(int interval)
+{
+	struct timeval tv_current;
+	struct timeval tv_next;
+
+	if (gettimeofday(&tv_current, NULL) < 0)
+		error_exit("Error gettimeofday\n");
+	tv_next = tv_current;
+	tv_next.tv_sec += interval;
+	while (tv_current.tv_sec < tv_next.tv_sec ||
+			tv_current.tv_usec < tv_next.tv_usec)
+	{
+		if (gettimeofday(&tv_current, NULL) < 0)
+			error_exit("Error gettimeofday\n");
+	}
+}
+
+bool receive_packet(t_env *env) {
+    setup_receive(env);
+    int nb_receive = recvmsg(env->socket_fd, &(env->msg), MSG_DONTWAIT);
+    if (env->icmp->icmp_hun.ih_idseq.icd_id == env->pid) {
+        env->packets_recv++;
+        // calculate stats
+        printf("got echo back: %lu bytes\n", nb_receive - sizeof(*(env->ip)));
+        timer(env->interval);
+        env->seq++;
+        return (false);
+    }
+    return (true);
 }
 
 void ping_loop(t_env *env) {
-    (void)env;
+    struct timeval beg;
+    struct timeval now;
+    (void)beg;
+    (void)now;
+
+    env->packets_sent = 0;
+    env->packets_recv = 0;
+
+    while (true) {
+        setup_send(env);
+        if (sendto(env->socket_fd, env->buffer, sizeof(env->buffer), 0, env->res->ai_addr, env->res->ai_addrlen) < 0) {
+            error_exit("sendto: could not send");
+        }
+        env->packets_sent++;
+        while (receive_packet(env))
+            ;
+    }
     return ;
 }
 
 int main(int ac, char **av) {
     if (ac < 2) {
         usage_error();
-    }
-    if (getuid() != 0) {
-        error_exit("should be uid 0");
     }
     signal(SIGINT, signal_handler);
 
@@ -186,14 +250,12 @@ int main(int ac, char **av) {
 
     create_socket(&env); // create socket
 
+    // init ip and icmp structs
     env.ip = (struct ip *)env.buffer;
     env.icmp = (struct icmp *)(env.ip + 1);
+
     print_host(env);
-    if (env.flood) {
-        env.interval = 0; // /!\ only if not set. Only the super-user may use this option with zero interval. 
-        flood_loop(&env);
-    } else {
-        ping_loop(&env);
-    }
+    ping_loop(&env);
+
     return 0;
 }

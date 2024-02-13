@@ -37,11 +37,10 @@ typedef struct s_env {
     //  -f
 
     // communication data
-    unsigned int sequence;
+    unsigned int seq;
     unsigned int count;
-    unsigned int interval;
 
-    bool flood; // floods the ECHO requests, ECHO_REQUEST adds a ".", ECHO_REPLY is a backspace \b. bonus -f
+    unsigned int interval; // -i real number
     bool numeric; // just don't print the weird sub dns rebound. bonus -n
     bool pattern; // if set sequence is a set number that doesn't increment. given as a 2 bytes hexa number "00" to "XX". bonus -p
     unsigned int timeout; // 0 by default (infinite). bonus -W 
