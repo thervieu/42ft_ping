@@ -57,7 +57,41 @@ void signal_handler(int signal) {
     return ;
 }
 
-void open_socket(t_env *env) {
+
+char *get_ip_from_hostname(char *hostname) {
+    struct addrinfo hints;
+    struct addrinfo *res;
+    struct sockaddr_in *sa_in;
+    
+    ft_memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+
+    int status = getaddrinfo(hostname, NULL, &hints, &res);
+    if (status < 0) {
+        error_exit("getaddrinfo failed");
+    }
+
+    sa_in = (struct sockaddr_in *)res->ai_addr;
+    char *ip_address = malloc(INET_ADDRSTRLEN*sizeof(char));
+    if (ip_address == NULL) {
+        freeaddrinfo(res);
+        error_exit("malloc failed");
+    }
+
+    if (inet_ntop(res->ai_family, &(sa_in->sin_addr),  ip_address, INET_ADDRSTRLEN) == NULL) {
+        freeaddrinfo(res);
+        free(ip_address);
+        error_exit("inet_ntop failed");
+    }
+
+    freeaddrinfo(res);
+    return ip_address;
+}
+
+void create_socket(t_env *env) {
+    env->host_src = "0.0.0.0"; // us
+    env->host_dst = get_ip_from_hostname(env->hostname);
+
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0) {
         error_exit("socket failed");
@@ -92,6 +126,33 @@ void arg_handler(t_env *env, int ac, char **av) {
     return ;
 }
 
+
+short ft_checksum(unsigned short *data, int len) {
+    unsigned long checksum = 0;
+
+    while (len > 1) {
+        checksum += *data++;
+        len -= sizeof(unsigned short);
+    }
+    if (len)
+        checksum += *(unsigned char*)data;
+
+    while (checksum >> 16) {
+        checksum = (checksum & 0xFFFF) + (checksum >> 16);
+    }
+    return (short)~checksum;
+}
+
+void flood_loop(t_env *env) {
+    (void)env;
+    return ;
+}
+
+void ping_loop(t_env *env) {
+    (void)env;
+    return ;
+}
+
 int main(int ac, char **av) {
     if (ac < 2) {
         usage_error();
@@ -101,8 +162,17 @@ int main(int ac, char **av) {
     }
     signal(SIGINT, signal_handler);
 
-    init_env(&env);
-    open_socket(&env);
+    init_env(&env); // set default values
+    arg_handler(&env, ac, av); // get hostname and options
 
-    arg_handler(&env, ac, av);
+    create_socket(&env); // create socket
+
+    env.ip = (struct ip *)env.buffer;
+    env.icmp = (struct icmp *)(env.ip + 1);
+    if (env.flood) {
+        flood_loop(&env);
+    } else {
+        ping_loop(&env);
+    }
+    return 0;
 }
