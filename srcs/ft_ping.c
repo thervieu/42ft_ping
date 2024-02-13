@@ -1,8 +1,23 @@
 #include "../incs/ft_ping.h"
 
 void usage_error(void) {
-    printf("usage: ./ft_ping [-v] HOST\n");
+    printf("usage: ./ft_ping [-h, -f, -n -p, -W, -ttl] hostname\n");
+    printf("\t\t./ft_ping -h to print the help\n");
     exit(1);
+}
+
+void help_and_exit(void) {
+    printf("FT_PING: help:\nusage: ./ft_ping [-h, -f, -n -p, -W, -ttl] hostname\n");
+    printf("\t\t-h\n\t\t\tprint this help\n\n");
+    printf("\t\t-f\n\t\t\tFlood ping. For every ECHO_REQUEST sent a period “.” is printed, while for ");
+    printf("every ECHO_REPLY received a backspace is printed.\n\n");
+    printf("\t\t-n\n\t\t\tNumeric output only. No attempt will be made to lookup symbolic names for host addresses.\n");
+    printf("\t\t-p pattern\n\t\t\tYou may specify up to 16 “pad” bytes to fill out the packet you send. This is useful for diagnosing");
+    printf(" data-dependent problems in a network. For example, -p ff will cause the sent packet to be filled with all ones.\n\n");
+    printf("\t\t-W timeout\n\t\t\tTime to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise");
+    printf(" ping waits for two RTTs. Real number allowed with dot as a decimal separator (regardless locale setup). 0 means infinite timeout.\n\n");
+    printf("\t\t-t ttl\n\t\t\tping only. Set the IP Time to Live.\n");
+    exit(0);
 }
 
 void error_exit(char *err) {
@@ -175,6 +190,7 @@ int main(int ac, char **av) {
     env.icmp = (struct icmp *)(env.ip + 1);
     print_host(env);
     if (env.flood) {
+        env.interval = 0; // /!\ only if not set. Only the super-user may use this option with zero interval. 
         flood_loop(&env);
     } else {
         ping_loop(&env);
