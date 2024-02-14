@@ -48,6 +48,8 @@ typedef struct s_env {
     bool unix_time; // print unix time. bonus -D
     unsigned int ttl; // 64 by default is it ??. bonus -ttl
     unsigned int deadline; // bonus -w int deadline, seconds after which we quit the program
+    struct timeval deadline_timeval;
+    unsigned int time_spent_sending_packets; // bonus -w int deadline, seconds after which we quit the program
 
     // socket
     int socket_fd;

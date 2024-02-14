@@ -137,6 +137,7 @@ void init_env(t_env *env) {
     env->seq = 0;
     env->interval = 1;
     env->timeout = 10;
+    env->time_spent_sending_packets = 0; // valeure 'time' dans les stats affichées
 
     // bonuses default
     env->count = 0; // 0 for infinite
@@ -202,6 +203,9 @@ void setup_send(t_env *env) {
 
     env->icmp->icmp_cksum = 0;
     env->icmp->icmp_cksum = ft_checksum((unsigned short *) env->icmp, sizeof(env->icmp));
+    
+    // increment sequence number
+    env->seq++;
 }
 
 void setup_receive(t_env *env) {
@@ -219,13 +223,28 @@ void setup_receive(t_env *env) {
 
 void receive_packet(int seconds_to_wait, t_env *env) {
     setup_receive(env);
-    (void)seconds_to_wait;
-    // start time
+    
+	struct timeval tv_current;
+	struct timeval tv_next;
+
+	if (gettimeofday(&tv_current, NULL) < 0)
+		error_exit("Error gettimeofday\n");
+	tv_next = tv_current;
+	tv_next.tv_sec += seconds_to_wait; // interval or packet receive timeout (mélangé pck -W pas implémenté)
     while (1) {
         char buffer[200];
         ssize_t packet_size = recvfrom(env->socket_fd, buffer, sizeof(buffer), MSG_DONTWAIT, NULL, NULL);
 
         if (packet_size < 0) {
+            // if no packets received and time elapsed, break
+            if (gettimeofday(&tv_current, NULL) < 0)
+                error_exit("Error gettimeofday\n");
+            if (env->deadline != 0 && (tv_current.tv_sec * 1000000 + tv_current.tv_usec) >= (env->deadline_timeval.tv_sec * 1000000 + env->deadline_timeval.tv_usec)) {
+                kill(getpid(), SIGINT); // -w deadline
+            }
+            if (tv_current.tv_sec * 1000000 + tv_current.tv_usec  < tv_next.tv_sec * 1000000 + tv_next.tv_usec) {
+                break; // pas sur de la formule
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue;
             }
@@ -235,42 +254,59 @@ void receive_packet(int seconds_to_wait, t_env *env) {
         struct iphdr *ip_packet = (struct iphdr *) buffer;
         struct icmp *icmp_packet = (struct icmp *) (buffer + (ip_packet->ihl * 4));
 
-        if (env->icmp->icmp_hun.ih_idseq.icd_id == env->pid) {
-            env->packets_recv++;
-            // calculate stats
-            if (icmp_packet->icmp_type == ICMP_TIME_EXCEEDED) {
-                printf("Time to live exceeded.\n");
-            } else {
-                printf("%ld bytes from %s: icmp_seq=%u ttl=%d\n",
-                    packet_size - sizeof(struct iphdr), inet_ntoa(*(struct in_addr *)&ip_packet->saddr),
-                    icmp_packet->icmp_seq, ip_packet->ttl);
-            }
-            env->seq++;
+        env->packets_recv++;
+        // calculate stats
+        if (icmp_packet->icmp_type == ICMP_TIME_EXCEEDED) {
+            printf("Time to live exceeded.\n");
+        } else {
+            // -D, -n, 
+            printf("%ld bytes from %s: icmp_seq=%u ttl=%d\n",
+                packet_size - sizeof(struct iphdr), inet_ntoa(*(struct in_addr *)&ip_packet->saddr),
+                icmp_packet->icmp_seq, ip_packet->ttl);
         }
-        // check if time exceeded
+        while (1) {
+            // if received all packets, quit
+            if (env->count != 0 && env->packets_recv == env->count) {
+                break ;
+            }
+            // if packet received and time elapsed, break
+            if (gettimeofday(&tv_current, NULL) < 0)
+                error_exit("Error gettimeofday\n");
+            if (env->deadline != 0 && (tv_current.tv_sec * 1000000 + tv_current.tv_usec) >= (env->deadline_timeval.tv_sec * 1000000 + env->deadline_timeval.tv_usec)) {
+                kill(getpid(), SIGINT);  // -w deadline
+            }
+            if (tv_current.tv_sec * 1000000 + tv_current.tv_usec  < tv_next.tv_sec * 1000000 + tv_next.tv_usec) {
+                break; // pas sur de la formule
+            }
+        }
     }
 }
 
 void ping_loop(t_env *env) {
-    struct timeval beg;
-    struct timeval now;
-    (void)beg;
-    (void)now;
+
 
     env->packets_sent = 0;
     env->packets_recv = 0;
 
     while (true) {
+        struct timeval beg;
+        struct timeval cur;
         setup_send(env);
+        if (gettimeofday(&beg, NULL) < 0)
+            error_exit("Error gettimeofday\n");
         if (sendto(env->socket_fd, env->buffer, sizeof(env->buffer), 0, env->res->ai_addr, env->res->ai_addrlen) < 0) {
             error_exit("sendto: could not send");
         }
         // time print start
         env->packets_sent++;
-        receive_packet(env->interval, env);
-        // time print end aggregate
+        if (env->count != 0 && env->packets_sent == env->count) {
+            break ;
+        }
+        if (gettimeofday(&cur, NULL) < 0)
+            error_exit("Error gettimeofday\n");
+        receive_packet(env->interval, env); // interval = 1
+        env->time_spent_sending_packets += (cur.tv_usec - beg.tv_usec) / 1000;
     }
-    // wait 10 seconds
     receive_packet(env->timeout, env);
     return ;
 }
